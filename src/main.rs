@@ -1,6 +1,14 @@
+mod error_reporter;
+mod lexer;
+
 use std::{
-    env, path::Path, process::{Command, ExitCode}
+    env, fs,
+    path::Path,
+    process::{exit, Command, ExitCode},
 };
+
+use error_reporter::print_error;
+use lexer::Token;
 
 #[derive(Debug)]
 struct CliArgs {
@@ -48,7 +56,39 @@ fn parse_cli_args(args: &[String]) -> Result<CliArgs, CliArgParseError> {
     }
 }
 
-fn compiler_driver(input_file_path: &Path) {
+fn lex(preprocessed_file_path: &Path) -> Vec<Token> {
+    let source = fs::read_to_string(preprocessed_file_path).expect("File to be able to be read");
+    let mut lexer = lexer::Lexer::new(preprocessed_file_path.display().to_string(), &source);
+    match lexer.lex() {
+        Ok(tokens) => {
+            dbg!(tokens)
+        }
+        Err(err) => match err {
+            lexer::LexerError::InvalidNumber(token_location) => {
+                print_error(
+                    "Error during lexing, number is invalid",
+                    &source,
+                    &token_location,
+                );
+                exit(2);
+            }
+            lexer::LexerError::UnrecognisedCharacter(token_location) => {
+                print_error(
+                    "Error during lexing, unrecognised character",
+                    &source,
+                    &token_location,
+                );
+                exit(2);
+            }
+        },
+    }
+}
+
+fn compiler_driver(cli_args: &CliArgs, input_file_path: &Path) {
+    let preprocessed_file_path = input_file_path.with_extension("i");
+    let _assembly_file_path = input_file_path.with_extension("s");
+    let _executable_file_path = input_file_path.with_extension("");
+
     // Run the preprocessor
     Command::new("gcc")
         .args([
@@ -56,32 +96,36 @@ fn compiler_driver(input_file_path: &Path) {
             "-P",
             &input_file_path.display().to_string(),
             "-o",
-            &input_file_path.with_extension("i").display().to_string(),
+            &preprocessed_file_path.display().to_string(),
         ])
         .status()
         .expect("gcc to not fail");
 
     // Run the compiler
-    // TODO: Replace this with my own compiler
-    Command::new("gcc")
-        .args([
-            "-S",
-            "-O",
-            &input_file_path.with_extension("i").display().to_string(),
-            "-o",
-            &input_file_path.with_extension("s").display().to_string(),
-        ])
-        .status()
-        .expect("gcc to not fail");
+    let _tokens = lex(&preprocessed_file_path);
+    if cli_args.lex {
+        return;
+    }
 
-    Command::new("gcc")
-        .args([
-            &input_file_path.with_extension("s").display().to_string(),
-            "-o",
-            &input_file_path.with_extension("").display().to_string(),
-        ])
-        .status()
-        .expect("gcc to not fail");
+    // Command::new("gcc")
+    //     .args([
+    //         "-S",
+    //         "-O",
+    //         &preprocessed_file_path.display().to_string(),
+    //         "-o",
+    //         &assembly_file_path.display().to_string(),
+    //     ])
+    //     .status()
+    //     .expect("gcc to not fail");
+
+    // Command::new("gcc")
+    //     .args([
+    //         &assembly_file_path.display().to_string(),
+    //         "-o",
+    //         &executable_file_path.display().to_string(),
+    //     ])
+    //     .status()
+    //     .expect("gcc to not fail");
 }
 
 fn main() -> ExitCode {
@@ -107,7 +151,7 @@ fn main() -> ExitCode {
         }
     };
 
-    compiler_driver(&cli_args.file_path);
+    compiler_driver(&cli_args, &cli_args.file_path);
 
     ExitCode::SUCCESS
 }
