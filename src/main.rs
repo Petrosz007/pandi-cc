@@ -1,5 +1,10 @@
+mod asm_ast;
+mod c_ast;
+mod c_to_asm;
+mod code_emission;
 mod error_reporter;
 mod lexer;
+mod parser;
 
 use std::{
     env, fs,
@@ -7,8 +12,12 @@ use std::{
     process::{exit, Command, ExitCode},
 };
 
+use c_ast::Program;
+use c_to_asm::c_to_asm;
+use code_emission::emit;
 use error_reporter::print_error;
 use lexer::Token;
+use parser::Parser;
 
 #[derive(Debug)]
 struct CliArgs {
@@ -60,9 +69,7 @@ fn lex(preprocessed_file_path: &Path) -> Vec<Token> {
     let source = fs::read_to_string(preprocessed_file_path).expect("File to be able to be read");
     let mut lexer = lexer::Lexer::new(preprocessed_file_path.display().to_string(), &source);
     match lexer.lex() {
-        Ok(tokens) => {
-            dbg!(tokens)
-        }
+        Ok(tokens) => tokens,
         Err(err) => match err {
             lexer::LexerError::InvalidNumber(token_location) => {
                 print_error(
@@ -84,10 +91,20 @@ fn lex(preprocessed_file_path: &Path) -> Vec<Token> {
     }
 }
 
+fn parse(tokens: Vec<Token>) -> Program {
+    match Parser::parse(&tokens) {
+        Err(err) => {
+            dbg!(err);
+            todo!("Add error handling")
+        }
+        Ok(program) => program,
+    }
+}
+
 fn compiler_driver(cli_args: &CliArgs, input_file_path: &Path) {
     let preprocessed_file_path = input_file_path.with_extension("i");
-    let _assembly_file_path = input_file_path.with_extension("s");
-    let _executable_file_path = input_file_path.with_extension("");
+    let assembly_file_path = input_file_path.with_extension("s");
+    let executable_file_path = input_file_path.with_extension("");
 
     // Run the preprocessor
     Command::new("gcc")
@@ -102,10 +119,23 @@ fn compiler_driver(cli_args: &CliArgs, input_file_path: &Path) {
         .expect("gcc to not fail");
 
     // Run the compiler
-    let _tokens = lex(&preprocessed_file_path);
+    let tokens = lex(&preprocessed_file_path);
     if cli_args.lex {
         return;
     }
+
+    let c_program = parse(tokens);
+    if cli_args.parse {
+        return;
+    }
+
+    let asm_program = c_to_asm(&c_program);
+    if cli_args.codegen {
+        return;
+    }
+
+    let asm_text = emit(&asm_program).join("\n");
+    fs::write(&assembly_file_path, asm_text).expect("writing to a file should not fail");
 
     // Command::new("gcc")
     //     .args([
@@ -118,14 +148,14 @@ fn compiler_driver(cli_args: &CliArgs, input_file_path: &Path) {
     //     .status()
     //     .expect("gcc to not fail");
 
-    // Command::new("gcc")
-    //     .args([
-    //         &assembly_file_path.display().to_string(),
-    //         "-o",
-    //         &executable_file_path.display().to_string(),
-    //     ])
-    //     .status()
-    //     .expect("gcc to not fail");
+    Command::new("gcc")
+        .args([
+            &assembly_file_path.display().to_string(),
+            "-o",
+            &executable_file_path.display().to_string(),
+        ])
+        .status()
+        .expect("gcc to not fail");
 }
 
 fn main() -> ExitCode {

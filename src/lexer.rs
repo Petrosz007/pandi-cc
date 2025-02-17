@@ -19,7 +19,7 @@ pub enum TokenType {
     Eof,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TokenLocation {
     pub file_name: String, // ? Maybe box this or something, could have a large memory footprint
     pub line: usize,
@@ -37,11 +37,11 @@ impl Display for TokenLocation {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Token {
-    token_type: TokenType,
-    text: String,
-    location: TokenLocation,
+    pub token_type: TokenType,
+    pub text: String,
+    pub location: TokenLocation,
 }
 
 pub struct Lexer {
@@ -136,15 +136,14 @@ impl Lexer {
             .get(self.current_token_start)
             .expect("that a character we already checked to be in the string")
         {
-            'i' if self.check_keyword(self.current_token_start, "nt") => TokenType::Int,
-            'v' if self.check_keyword(self.current_token_start, "oid") => TokenType::Void,
-            'r' if self.check_keyword(self.current_token_start, "eturn") => TokenType::Return,
+            'i' if self.check_keyword(self.current_token_start + 1, "nt") => TokenType::Int,
+            'v' if self.check_keyword(self.current_token_start + 1, "oid") => TokenType::Void,
+            'r' if self.check_keyword(self.current_token_start + 1, "eturn") => TokenType::Return,
             _ => TokenType::Identifier,
         }
     }
 
     fn parse_identifier(&mut self) -> Token {
-        dbg!("asd");
         while let Some(c) = self.peek() {
             if c.is_alphanumeric() {
                 self.next();
@@ -204,7 +203,7 @@ impl Lexer {
     pub fn lex(&mut self) -> Result<Vec<Token>, LexerError> {
         let mut tokens = Vec::new();
         loop {
-            let token = dbg!(self.parse_token())?;
+            let token = self.parse_token()?;
             let is_eof = token.token_type == TokenType::Eof;
             tokens.push(token);
             if is_eof {
